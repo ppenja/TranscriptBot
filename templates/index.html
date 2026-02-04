@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TranscriptBot - YouTube Channel Archiver</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>TranscriptBot</h1>
+            <p class="subtitle">Archive &amp; Search YouTube Transcripts</p>
+            <div class="stats" id="stats"></div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Settings Panel -->
+        <section class="card" id="settings-card">
+            <div class="card-header" onclick="toggleSection('settings-body')">
+                <h2>Settings</h2>
+                <span class="toggle-icon" id="settings-body-icon">+</span>
+            </div>
+            <div class="card-body collapsed" id="settings-body">
+                <div class="form-group">
+                    <label for="api-key">YouTube Data API Key</label>
+                    <div class="input-row">
+                        <input type="password" id="api-key" placeholder="Enter your YouTube API key">
+                        <button onclick="saveApiKey()" class="btn btn-secondary">Save Key</button>
+                    </div>
+                    <p class="help-text" id="key-status"></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Archive Panel -->
+        <section class="card">
+            <div class="card-header">
+                <h2>Archive a Channel</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label for="channel-url">YouTube Channel URL</label>
+                    <div class="input-row">
+                        <input type="text" id="channel-url"
+                               placeholder="e.g. https://www.youtube.com/@ChannelName">
+                        <button onclick="startArchive()" class="btn btn-primary" id="archive-btn">
+                            Archive
+                        </button>
+                    </div>
+                    <p class="help-text">
+                        Supports URLs like youtube.com/@handle, youtube.com/channel/UC..., youtube.com/c/name
+                    </p>
+                </div>
+                <div id="progress-area" class="hidden">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                    <p class="progress-text" id="progress-text"></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Search Panel -->
+        <section class="card">
+            <div class="card-header">
+                <h2>Search Transcripts</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <div class="input-row">
+                        <input type="text" id="search-query"
+                               placeholder="Search for keywords across all archived transcripts..."
+                               onkeydown="if(event.key==='Enter') doSearch()">
+                        <button onclick="doSearch()" class="btn btn-primary">Search</button>
+                    </div>
+                </div>
+                <div id="search-results"></div>
+            </div>
+        </section>
+
+        <!-- Archived Channels -->
+        <section class="card">
+            <div class="card-header">
+                <h2>Archived Channels</h2>
+            </div>
+            <div class="card-body" id="channels-list">
+                <p class="muted">No channels archived yet.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>TranscriptBot &mdash; YouTube Transcript Archiver &amp; Search</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
