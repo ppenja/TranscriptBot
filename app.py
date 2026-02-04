@@ -171,12 +171,7 @@ def resolve_channel_id(youtube, id_type, identifier):
         return None, None
 
     if id_type == "handle":
-        # Try forHandle parameter first
-        resp = youtube.channels().list(part="snippet", forHandle=identifier).execute()
-        if resp.get("items"):
-            item = resp["items"][0]
-            return item["id"], item["snippet"]["title"]
-        # Fallback: search
+        # Use search API to resolve @handle to channel ID (works across all library versions)
         resp = youtube.search().list(part="snippet", q=identifier, type="channel", maxResults=1).execute()
         if resp.get("items"):
             ch_id = resp["items"][0]["snippet"]["channelId"]
