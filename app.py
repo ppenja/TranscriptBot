@@ -2,6 +2,7 @@ import os
 import re
 import sqlite3
 import json
+import logging
 from datetime import datetime
 from threading import Thread
 
@@ -10,6 +11,9 @@ from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
 from textblob import TextBlob
 import nltk
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("transcriptbot")
 
 # Ensure NLTK data is available
 for _pkg in ("punkt_tab", "averaged_perceptron_tagger", "brown", "wordnet"):
@@ -238,9 +242,11 @@ def get_video_details(youtube, video_ids):
 def fetch_transcript(video_id):
     """Download transcript for a single video. Returns text or None."""
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        return " ".join(entry["text"] for entry in transcript_list)
-    except Exception:
+        ytt = YouTubeTranscriptApi()
+        transcript = ytt.fetch(video_id)
+        return " ".join(snippet.text for snippet in transcript)
+    except Exception as e:
+        log.warning("Transcript unavailable for %s: %s", video_id, e)
         return None
 
 
@@ -307,6 +313,8 @@ def archive_channel_task(job_id, channel_url, api_key):
         archive_jobs[job_id]["status"] = "downloading_transcripts"
         archive_jobs[job_id]["completed"] = 0
         archive_jobs[job_id]["skipped"] = 0
+        archive_jobs[job_id]["failed"] = 0
+        archive_jobs[job_id]["saved"] = 0
 
         for v in videos:
             # Skip if we already have the transcript
@@ -323,6 +331,9 @@ def archive_channel_task(job_id, channel_url, api_key):
                     (v["video_id"], text, datetime.utcnow().isoformat()),
                 )
                 db.commit()
+                archive_jobs[job_id]["saved"] += 1
+            else:
+                archive_jobs[job_id]["failed"] += 1
 
             archive_jobs[job_id]["completed"] += 1
 

@@ -99,8 +99,8 @@ async function pollArchive(jobId) {
         resolving_channel: "Resolving channel...",
         fetching_videos: "Fetching video list...",
         fetching_details: "Fetching video details...",
-        downloading_transcripts: `Downloading transcripts: ${data.completed} / ${data.total_videos}`,
-        done: `Done! Archived ${data.total_videos} videos (${data.skipped} already existed).`,
+        downloading_transcripts: `Downloading transcripts: ${data.completed} / ${data.total_videos} (${data.saved || 0} saved, ${data.failed || 0} unavailable)`,
+        done: `Done! ${data.saved || 0} transcripts saved, ${data.failed || 0} unavailable, ${data.skipped || 0} already existed (${data.total_videos} videos total).`,
         error: "Error: " + (data.error || "Unknown error"),
     };
 
