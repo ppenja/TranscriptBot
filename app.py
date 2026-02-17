@@ -2,6 +2,8 @@ import os
 import re
 import sqlite3
 import json
+import time
+import random
 import logging
 from datetime import datetime
 from threading import Thread
@@ -135,6 +137,9 @@ def extract_channel_identifier(url):
     """Extract channel ID, handle, or username from various YouTube URL formats."""
     url = url.strip().rstrip("/")
 
+    # Strip trailing path segments like /videos, /shorts, /streams, etc.
+    url = re.sub(r"/(videos|shorts|streams|playlists|community|channels|about|featured)$", "", url)
+
     # @handle format: youtube.com/@handle
     m = re.search(r"youtube\.com/@([\w.-]+)", url)
     if m:
@@ -234,15 +239,50 @@ def get_video_details(youtube, video_ids):
     return details
 
 
-def fetch_transcript(video_id):
-    """Download transcript for a single video. Returns text or None."""
-    try:
-        ytt = YouTubeTranscriptApi()
+def _call_transcript_api(video_id):
+    """Call the transcript API, handling both v0.x and v1.x API styles."""
+    ytt = YouTubeTranscriptApi()
+
+    # v1.x style: instance has get_transcript method
+    if hasattr(ytt, "get_transcript"):
+        transcript = ytt.get_transcript(video_id)
+        return " ".join(entry["text"] for entry in transcript)
+
+    # v1.x alternate style: instance has fetch method
+    if hasattr(ytt, "fetch"):
         transcript = ytt.fetch(video_id)
         return " ".join(snippet.text for snippet in transcript)
-    except Exception as e:
-        log.warning("Transcript unavailable for %s: %s", video_id, e)
-        return None
+
+    # v0.x fallback: class-level method
+    transcript = YouTubeTranscriptApi.get_transcript(video_id)
+    return " ".join(entry["text"] for entry in transcript)
+
+
+def fetch_transcript(video_id, max_retries=3):
+    """Download transcript for a single video with retry + exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            # Random delay between 1.5-2.5s to avoid rate limiting
+            time.sleep(1.5 + random.uniform(0, 1))
+            return _call_transcript_api(video_id)
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "Too Many Requests" in error_str:
+                wait_time = (2 ** attempt) * 15  # 15s, 30s, 60s
+                log.warning("Rate limited on %s, waiting %ds before retry %d/%d...",
+                            video_id, wait_time, attempt + 1, max_retries)
+                time.sleep(wait_time)
+                continue
+            if "no element found" in error_str:
+                # XML parse error — likely a transient issue, retry once
+                if attempt == 0:
+                    log.warning("XML parse error for %s, retrying...", video_id)
+                    time.sleep(3)
+                    continue
+            log.warning("Transcript unavailable for %s: %s", video_id, e)
+            return None
+    log.warning("Failed after %d retries for %s", max_retries, video_id)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +451,8 @@ def api_archive():
         "total_videos": 0,
         "completed": 0,
         "skipped": 0,
+        "failed": 0,
+        "saved": 0,
         "error": None,
     }
 
@@ -459,7 +501,6 @@ def api_search():
     db = get_db()
 
     # Use FTS5 for fast full-text search
-    # Build a safe FTS query: wrap each word in double-quotes so special chars are escaped
     words = query.split()
     fts_query = " ".join(f'"{w}"' for w in words)
 
@@ -481,13 +522,11 @@ def api_search():
 
     results = []
     for row in rows:
-        # Get the full transcript for sentiment analysis
         transcript = db.execute("SELECT full_text FROM transcripts WHERE video_id = ?", (row["video_id"],)).fetchone()
         sentiment_data = []
         if transcript:
             sentiment_data = analyze_sentiment(transcript["full_text"], query)
 
-        # Compute overall sentiment
         if sentiment_data:
             avg_polarity = sum(s["polarity"] for s in sentiment_data) / len(sentiment_data)
             if avg_polarity > 0.1:
@@ -510,7 +549,7 @@ def api_search():
             "sentiment": {
                 "overall": overall,
                 "polarity": round(avg_polarity, 3),
-                "details": sentiment_data[:5],  # Top 5 context sentences
+                "details": sentiment_data[:5],
             },
         })
 
