@@ -239,36 +239,57 @@ def get_video_details(youtube, video_ids):
     return details
 
 
+# Check for cookies file
+COOKIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+
+
 def _call_transcript_api(video_id):
-    """Call the transcript API, handling both v0.x and v1.x API styles."""
+    """Call the transcript API, handling both v0.x and v1.x API styles, with optional cookies."""
     ytt = YouTubeTranscriptApi()
+
+    # Check if cookies file exists
+    cookies_path = COOKIES_FILE if os.path.exists(COOKIES_FILE) else None
 
     # v1.x style: instance has get_transcript method
     if hasattr(ytt, "get_transcript"):
-        transcript = ytt.get_transcript(video_id)
+        if cookies_path:
+            transcript = ytt.get_transcript(video_id, cookies=cookies_path)
+        else:
+            transcript = ytt.get_transcript(video_id)
         return " ".join(entry["text"] for entry in transcript)
 
     # v1.x alternate style: instance has fetch method
     if hasattr(ytt, "fetch"):
-        transcript = ytt.fetch(video_id)
+        if cookies_path:
+            transcript = ytt.fetch(video_id, cookies=cookies_path)
+        else:
+            transcript = ytt.fetch(video_id)
         return " ".join(snippet.text for snippet in transcript)
 
     # v0.x fallback: class-level method
-    transcript = YouTubeTranscriptApi.get_transcript(video_id)
+    if cookies_path:
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, cookies=cookies_path)
+    else:
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
     return " ".join(entry["text"] for entry in transcript)
 
 
-def fetch_transcript(video_id, max_retries=3):
+def fetch_transcript(video_id, max_retries=5):
     """Download transcript for a single video with retry + exponential backoff."""
+    # Use shorter delays if we have cookies, longer if not
+    has_cookies = os.path.exists(COOKIES_FILE)
+    base_delay = 2 if has_cookies else 8  # 2s with cookies, 8s without
+
     for attempt in range(max_retries):
         try:
-            # Random delay between 1.5-2.5s to avoid rate limiting
-            time.sleep(1.5 + random.uniform(0, 1))
+            # Random delay to avoid rate limiting
+            delay = base_delay + random.uniform(0, 2)
+            time.sleep(delay)
             return _call_transcript_api(video_id)
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "Too Many Requests" in error_str:
-                wait_time = (2 ** attempt) * 15  # 15s, 30s, 60s
+                wait_time = (2 ** attempt) * 30  # 30s, 60s, 120s, 240s, 480s
                 log.warning("Rate limited on %s, waiting %ds before retry %d/%d...",
                             video_id, wait_time, attempt + 1, max_retries)
                 time.sleep(wait_time)
@@ -277,7 +298,7 @@ def fetch_transcript(video_id, max_retries=3):
                 # XML parse error — likely a transient issue, retry once
                 if attempt == 0:
                     log.warning("XML parse error for %s, retrying...", video_id)
-                    time.sleep(3)
+                    time.sleep(5)
                     continue
             log.warning("Transcript unavailable for %s: %s", video_id, e)
             return None
